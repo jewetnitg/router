@@ -19,7 +19,7 @@
     "default": {
       "outputSourceFiles": true
     },
-    "systemName": "MODEL",
+    "systemName": "ROUTER",
     "footer": "",
     "copyright": "Rik Hoffbauer 2015",
     "navType": "vertical",

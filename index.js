@@ -1,3 +1,7 @@
-import router from './src/factories/Router';
+import Router from './src/factories/Router';
 
-export default router;
+export {
+  Router as Router
+};
+
+export default Router;

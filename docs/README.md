@@ -1,13 +1,13 @@
-Model
+Router
 ============================
 
-This npm module serves to make working with models easier.
+This npm module serves to make routing easier.
 
 Adding it to a project
 ======================
 
 ```
-npm install frontend-model --save
+npm install frontend-router --save
 ```
 
 Installing

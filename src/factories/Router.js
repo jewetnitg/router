@@ -1,163 +1,143 @@
 /**
  * @author rik
  */
-import events from 'events';
-
 import _ from 'lodash';
+import $ from 'jquery';
+import Grapnel from 'grapnel';
 
-import Route from './Route';
+import Request from './Request';
+import ControllerRequest from './ControllerRequest';
+
+import controllerMiddlewareFactory from './middleware/controller';
+import policiesMiddlewareFactory from './middleware/policies';
 
 /**
+ * The Router factory / class, responsible for creating a Router.
+ *
  * @class Router
  *
- * @param options {Object} Object containing the properties listed below
+ * @param options {Object}
  *
- * @property {Boolean} [pushState=true]
- * @property routes {Object<Object>} Hashmap containing routes
+ * @property controllers {Object<Object<Function>>} Hashmap containing Controllers
  * @property policies {Object<Function>} Hashmap containing policies
+ * @property routes {Object<Object>} Hashmap containing routes
+ * @property success {Function} Function that gets executed when a route has successfully executed
+ * @property fail {Function} Function that gets executed when a route has failed to execute successfully
+ * @property sync {Function} Function that gets executed when a controller syncs
+ * @property {String} [anchorSelector='a[href^="/"]:not([href^="//"])'] - jQuery selector that represents all anchors that should be event.preventDefault()'ed and use the router to navigate instead
  *
- * @returns {Router} The constructed Router
+ * @property pushState {Boolean} Grapnel pushState option
+ * @property root {Boolean} Grapnel root option
+ * @property env {Boolean} Grapnel env option
+ * @property mode {Boolean} Grapnel mode option
+ * @property hashBang {Boolean} Grapnel hashBang option
  *
  * @example
- * const router = Router({
+ * const router = Router2({
  *   pushState: true,
+ *   success(route, data) {
+ *     // the route and data resolved from the Controller
+ *   },
+ *   fail(route, data) {
+ *     // the failed route and data from policy/controller that failed
+ *   },
+ *   sync(route, data) {
+ *     // controller sync happened for the route passed in with data passed in
+ *   },
  *   routes: {
- *     '/user/:id': {
- *       policies: ['isLoggedIn']
+ *     '/testReject': {
+ *       policies: ['test'],
+ *       controller: 'test.test'
+ *     }
+ *   },
+ *   '/testResolve': {
+ *       policies: [],
+ *       controller: 'test.test'
+ *     }
+ *   },
+ *   policies: {
+ *     test: function() {
+ *       return Promise.reject();
+ *     }
+ *   },
+ *   controllers: {
+ *     test: {
+ *       test: function () {
+ *         return {
+ *           test: true
+ *         }
+ *       }
  *     }
  *   }
  * });
+ *
  */
-function Router(options) {
-  _.defaults(options, Router.defaults);
+function Router(options = {}) {
+  _.defaults(options, {
+    policies: {},
+    controllers: {}
+  });
 
-  // @todo call validator
-
+  // @todo validate options
   const props = {
-    pushState: {
-      value: options.pushState
-    },
-    defaultRoute: {
-      value: options.defaultRoute
-    },
-    routes: {
-      value: options.routes
-    },
-    policies: {
-      value: options.policies
-    },
-    routeHandler: {
-      value: options.routeHandler
-    },
-    eventEmitter: {
-      value: new events.EventEmitter()
+
+    /**
+     * The options as passed into the factory
+     *
+     * @name options
+     * @memberof Router
+     * @instance
+     * @type Object
+     */
+    options: {
+      value: options
     }
   };
-
   const router = Object.create(Router.prototype, props);
 
-  privateApi.constructRoutes.call(router);
+  makeAnchorDOMElementsUseRouterNavigate(router, options.anchorSelector);
+
+
+  /**
+   * An instance of the Grapnel router, responsible for actual routing
+   *
+   * @name grapnel
+   * @memberof Router
+   * @instance
+   * @type Object
+   */
+  router.grapnel = constructGrapnelRouter(options, router);
 
   return router;
 }
 
-Router.defaults = {
-  pushState: true,
-  routes: {},
-  policies: {}
-};
-
 Router.prototype = {
 
-  pushState: true,
-
   /**
-   * @name currentRoute
+   * Navigates to a url
+   *
+   * @method navigate
    * @memberof Router
    * @instance
-   * @type Route|undefined
-   */
-  get currentRoute() {
-    return privateApi.findRouteForCurrentUrl.call(this);
-  },
-
-  /**
-   * @name currentUrl
-   * @memberof Router
-   * @instance
-   * @type String
-   */
-  get currentUrl() {
-    if (this.pushState) {
-      return privateApi.currentUrlFromPopState.call(this);
-    } else {
-      return privateApi.currentUrlFromHash.call(this);
-    }
-  },
-
-  /**
-   * @method on
-   * @param event {String}
-   * @param callback {Function}
-   */
-  on(event, callback) {
-    this.eventEmitter.on(event, callback);
-  },
-
-  /**
-   * @method trigger
-   * @param event {String}
-   * @param data {*}
-   */
-  trigger(event, data) {
-    this.eventEmitter.emit(event, data);
-  },
-
-  /**
-   * @method off
-   * @param event {String}
-   * @param callback {Function}
-   */
-  off(event, callback) {
-    if (callback) {
-      this.eventEmitter.removeListener(event, callback);
-    } else {
-      this.eventEmitter.removeAllListeners(event);
-    }
-  },
-
-  /**
-   * @method once
-   * @param event {String}
-   * @param callback {Function}
-   */
-  once(event, callback) {
-    const cb = data => {
-      callback(data);
-      this.off(event, cb);
-    };
-
-    this.on(event, cb)
-  },
-
-  /**
    *
-   */
-  start() {
-    //noinspection JSUnusedAssignment
-    privateApi.startListeningForRouteEvents.call(this);
-    //noinspection JSUnusedAssignment
-    privateApi.executeCurrentRoute.call(this);
-
-    this.on('route', () => {
-      privateApi.executeCurrentRoute.call(this);
-    });
-  },
-
-  /**
+   * @param url {String} Url to navigate to
+   * @param {Object} [options] - Object containing the properties listed below
    *
-   * @param url
-   * @param options
+   * @property [trigger=true] {Boolean} - Indicates a route event should be triggered, so the route gets executed
+   * @property [replace=false] {Boolean} - Indicates the history item should be replaced
+   *
+   * @todo add a data param so that urls an contains splats that will be filled with the data
+   * @example
+   * // regular navigate
+   * router.navigate('/user/3');
+   * // replace the history item
+   * router.navigate('/user/6', {
+   *   replace: true
+   * });
+   * // dont trigger event, route won't be handled
+   * router.navigate('/user/6', {
+   *   trigger: false
+   * });
    */
   navigate(url, options = {}) {
     _.defaults(options, {
@@ -165,27 +145,48 @@ Router.prototype = {
       replace: false
     });
 
-    if (this.pushState) {
-      //noinspection JSUnusedAssignment
-      privateApi.navigateForPopState.call(this, url, options);
+    if (!options.trigger) {
+      if (options.replace) {
+        replaceNavigate(this.grapnel, url);
+      } else {
+        this.grapnel.show(url);
+      }
     } else {
-      //noinspection JSUnusedAssignment
-      privateApi.navigateForHashChange.call(this, url, options);
+      if (options.replace) {
+        replaceNavigate(this.grapnel, url);
+        this.reload();
+      } else {
+        this.grapnel.navigate(url);
+      }
     }
   },
 
   /**
+   * Reloads the current page without actually reloading
    *
-   * @returns {*}
+   * @method reload
+   * @memberof Router
+   * @instance
+   * @example
+   * route.reload();
    */
-  refresh() {
-    //noinspection JSUnusedAssignment
-    return privateApi.executeCurrentRoute.call(this);
+  reload() {
+    const event = this.grapnel.options.mode === 'pushState' ? 'navigate' : 'hashchange';
+    this.grapnel.trigger(event);
   },
 
   /**
+   * Redirects to a url, replaces the current history item.
    *
-   * @param url
+   * @method redirect
+   * @memberof Router
+   * @instance
+   *
+   * @param url {String} Url to redirect to
+   *
+   * @todo add a data param so that urls an contains splats that will be filled with the data
+   * @example
+   * router.redirect('/user/5');
    */
   redirect(url) {
     this.navigate(url, {
@@ -195,95 +196,88 @@ Router.prototype = {
 
 };
 
-const privateApi = {
+function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
+  $(document).on('click', (e) => {
+    if ($(e.target).is(anchorSelector || 'a[href^="/"]:not([href^="//"])')) {
+      e.preventDefault();
+      const url = $(e.target).attr('href');
+      router.navigate(url);
+    }
+  });
+}
 
-  constructRoutes() {
-    _.each(this.routes, (routeOptions, route) => {
-      routeOptions.route = routeOptions.route || route;
-      routeOptions.router = this;
-
-      this.routes[route] = Route(routeOptions);
-    });
-  },
-
-  startListeningForRouteEvents() {
-    if (!this.pushState) {
-      //noinspection JSUnusedAssignment
-      privateApi.startListeningForHashChangeEvents.call(this);
+// originally take from Grapnel.fragment.set, changed to replace the current history item instead of add to the history
+function replaceNavigate(grapnel, frag) {
+  if (grapnel.options.mode === 'pushState') {
+    frag = (grapnel.options.root) ? (grapnel.options.root + frag) : frag;
+    window.history.replaceState({}, null, frag);
+  } else if (window.location) {
+    frag = (grapnel.options.hashBang ? '!' : '') + frag;
+    if (!window.history.replaceState) {
+      console.error(`Can't replace url to '${frag}', replaceState not available, falling back to doing normal navigate, which creates a history item.`);
+      window.location.hash = frag;
     } else {
-      //noinspection JSUnusedAssignment
-      privateApi.startListeningForPopStateEvents.call(this);
+      window.history.replaceState(undefined, undefined, `#${frag}`);
     }
-  },
-
-  startListeningForHashChangeEvents() {
-    window.addEventListener('hashchange', () => {
-      this.trigger('route');
-    }, false);
-  },
-
-  startListeningForPopStateEvents() {
-    window.addEventListener('popstate', () => {
-      this.trigger('route');
-    }, false);
-  },
-
-  currentUrlFromHash() {
-    return window.location.hash.replace('#!', '');
-  },
-
-  currentUrlFromPopState() {
-    return history.state ? history.state.path : window.location.pathname;
-  },
-
-  findRouteForCurrentUrl() {
-    return _.find(this.routes, (route) => {
-      // getParamsFromUrl returns false if the url doesn't match the route,
-      // it returns an empty object if it doesn't but doesn't have params
-      return !!route.getParamsFromUrl(this.currentUrl);
-    });
-  },
-
-  executeCurrentRoute() {
-    const currentRoute = this.currentRoute;
-
-    if (currentRoute && currentRoute.execute) {
-      const params = currentRoute.getParamsFromUrl(this.currentUrl);
-      return currentRoute.execute(params);
-    } else {
-      // @todo allow for a 404 route
-      if (this.defaultRoute) {
-        this.navigate(this.defaultRoute);
-      }
-    }
-  },
-
-  navigateForPopState(url, options = {}) {
-    const path = url.replace(/!|#/g, '');
-
-    if (options.replace) {
-      history.replaceState({path}, '', path);
-    } else {
-      history.pushState({path}, '', path);
-    }
-
-    if (options.trigger) {
-      this.trigger('route', options);
-    }
-  },
-
-  navigateForHashChange(url, options = {}) {
-    // @todo implement properly
-    if (options.trigger) {
-      //noinspection JSUnusedAssignment
-      window.location.hash = '!#' + privateApi.sanitizeUrl.call(this, url);
-    }
-  },
-
-  sanitizeUrl(url) {
-    return url.replace(/!|#/g, '');
+  } else {
+    window._pathname = frag || '';
   }
+}
 
-};
+function constructGrapnelRouter(options = {}, router) {
+  const grapnel = new Grapnel({
+    pushState: options.pushState,
+    root: options.root,
+    env: options.env,
+    mode: options.mode,
+    hashBang: options.hashBang
+  });
+
+  addRoutesToGrapnelRouter(options, grapnel);
+
+  grapnel.on('controller:success', (data) => {
+    options.success(data.route, data.data);
+  });
+
+  grapnel.on('controller:sync', (data) => {
+    options.sync(data.route, data.data);
+  });
+
+  grapnel.on('controller:failure', (data) => {
+    options.fail(data.route, {
+      reason: 'controller',
+      data: data.data
+    });
+  });
+
+  grapnel.on('policy:failure', (data) => {
+    if (data.route.unauthorized) {
+      router.redirect(data.route.unauthorized);
+    }
+
+    options.fail(data.route, {
+      reason: 'policy',
+      data: data.data
+    });
+  });
+
+  return grapnel;
+}
+
+function addRoutesToGrapnelRouter(options, grapnel) {
+  _.each(options.routes, (route, routeName) => {
+    // @todo validate options
+    route.route = route.route || routeName;
+    const middleware = [
+      policiesMiddlewareFactory(route, grapnel, options.policies),
+      controllerMiddlewareFactory(route, grapnel, options.controllers)
+    ];
+
+    middleware.unshift(route.route);
+    grapnel.get.apply(grapnel, middleware);
+
+    return route;
+  });
+}
 
 export default Router;
