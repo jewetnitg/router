@@ -1,1 +1,1 @@
-Please read the documentation available at http://jewetnitg.github.io/model
+Please read the documentation available at http://jewetnitg.github.io/router

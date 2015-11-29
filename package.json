@@ -1,7 +1,7 @@
 {
   "name": "frontend-router",
   "version": "0.0.1",
-  "description": "frontend-model is a modular browserify module that serves to make working with models easier.",
+  "description": "frontend-router is a modular browserify module that serves to make working with models easier.",
   "main": "index.js",
   "scripts": {
     "build": "gulp build",
@@ -95,17 +95,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com:jewetnitg/model.git"
+    "url": "git+ssh://git@github.com:jewetnitg/router.git"
   },
   "keywords": [
-    "model",
+    "router",
     "request",
     "connection",
     "browserify",
     "es6"
   ],
   "bugs": {
-    "url": "https://github.com/jewetnitg/model/issues"
+    "url": "https://github.com/jewetnitg/router/issues"
   },
-  "homepage": "https://github.com/jewetnitg/model#readme"
+  "homepage": "https://github.com/jewetnitg/router#readme"
 }
