@@ -32,6 +32,8 @@ import policiesMiddlewareFactory from './middleware/policies';
  * @property mode {Boolean} Grapnel mode option
  * @property hashBang {Boolean} Grapnel hashBang option
  *
+ * @todo implement defaultRoute, notFoundRoute, errorRoute (for controller errors)
+ *
  * @example
  * const router = Router2({
  *   pushState: true,
@@ -78,7 +80,30 @@ function Router(options = {}) {
     controllers: {}
   });
 
-  // @todo validate options
+  if (typeof options.success !== 'function') {
+    throw new Error(`Can't construct router, success method not provided.`);
+  }
+
+  if (typeof options.fail !== 'function') {
+    throw new Error(`Can't construct router, fail method not provided.`);
+  }
+
+  if (typeof options.sync !== 'function') {
+    throw new Error(`Can't construct router, sync method not provided.`);
+  }
+
+  if (typeof options.routes !== 'object') {
+    throw new Error(`Can't construct router, routes object not provided.`);
+  }
+
+  if (typeof options.policies !== 'object') {
+    throw new Error(`Can't construct router, policies object not provided.`);
+  }
+
+  if (typeof options.controllers !== 'object') {
+    throw new Error(`Can't construct router, controllers object not provided.`);
+  }
+
   const props = {
 
     /**
@@ -210,14 +235,14 @@ function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
 function replaceNavigate(grapnel, frag) {
   if (grapnel.options.mode === 'pushState') {
     frag = (grapnel.options.root) ? (grapnel.options.root + frag) : frag;
-    window.history.replaceState({}, null, frag);
+    window.history.replaceState({}, "", frag);
   } else if (window.location) {
     frag = (grapnel.options.hashBang ? '!' : '') + frag;
     if (!window.history.replaceState) {
       console.error(`Can't replace url to '${frag}', replaceState not available, falling back to doing normal navigate, which creates a history item.`);
       window.location.hash = frag;
     } else {
-      window.history.replaceState(undefined, undefined, `#${frag}`);
+      window.history.replaceState({}, "", `#${frag}`);
     }
   } else {
     window._pathname = frag || '';
@@ -266,8 +291,8 @@ function constructGrapnelRouter(options = {}, router) {
 
 function addRoutesToGrapnelRouter(options, grapnel) {
   _.each(options.routes, (route, routeName) => {
-    // @todo validate options
     route.route = route.route || routeName;
+
     const middleware = [
       policiesMiddlewareFactory(route, grapnel, options.policies),
       controllerMiddlewareFactory(route, grapnel, options.controllers)
