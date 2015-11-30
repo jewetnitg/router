@@ -35,13 +35,15 @@ import policiesMiddlewareFactory from './middleware/policies';
  * @todo implement defaultRoute, notFoundRoute, errorRoute (for controller errors)
  *
  * @example
- * const router = Router2({
+ * const router = Router({
  *   pushState: true,
  *   success(route, data) {
  *     // the route and data resolved from the Controller
  *   },
  *   fail(route, data) {
  *     // the failed route and data from policy/controller that failed
+ *     data.reason; // 'policy' or 'controller'
+ *     data.data; // data policy/controlller rejected with
  *   },
  *   sync(route, data) {
  *     // controller sync happened for the route passed in with data passed in
@@ -75,10 +77,7 @@ import policiesMiddlewareFactory from './middleware/policies';
  *
  */
 function Router(options = {}) {
-  _.defaults(options, {
-    policies: {},
-    controllers: {}
-  });
+  _.merge(options, Router.defaults, options);
 
   if (typeof options.success !== 'function') {
     throw new Error(`Can't construct router, success method not provided.`);
@@ -135,6 +134,33 @@ function Router(options = {}) {
 
   return router;
 }
+
+/**
+ * Default properties for objects passed into the Router factory,
+ * gets merged (deeply) with the options passed in.
+ *
+ * @name defaults
+ * @memberof Router
+ * @static
+ * @type Object
+ * @property {Object<Function>} [policies={}] Policies specified as a hashmap
+ * @property {Object<Object<Function>>} [controllers={}] Controllers specified as a hashmap
+ */
+Router.defaults = {
+  policies: {},
+  controllers: {}
+};
+
+/**
+ * Default properties for route objects, gets merged (deeply) with the routes.
+ *
+ * @name routeDefaults
+ * @memberof Router
+ * @static
+ * @type Object
+ * @default {}
+ */
+Router.routeDefaults = {};
 
 Router.prototype = {
 
@@ -291,7 +317,9 @@ function constructGrapnelRouter(options = {}, router) {
 
 function addRoutesToGrapnelRouter(options, grapnel) {
   _.each(options.routes, (route, routeName) => {
-    route.route = route.route || routeName;
+    _.merge(route, Router.routeDefaults, {
+      route: routeName
+    }, route);
 
     const middleware = [
       policiesMiddlewareFactory(route, grapnel, options.policies),

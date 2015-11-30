@@ -10,6 +10,8 @@ Adding it to a project
 npm install frontend-router --save
 ```
 
+Alternatively the build can be downloaded <a href="/build.tar.gz">here</a>
+
 Installing
 ==========
 
@@ -47,3 +49,5 @@ npm run build
 
 for example.
 For all npm scripts available please see {@tutorial npm scripts}
+
+

@@ -6,6 +6,7 @@ module.exports = function (gulp) {
   var url = null;
   var errorMessage = '';
   var tempDir = '.gh-pages';
+  var archivePath = './build/build.tar.gz';
   var sourceDir = './build/docs/.';
 
   if (packageJson.repository) {
@@ -33,8 +34,9 @@ module.exports = function (gulp) {
       // remove .gh-pages dir, this is our temp dir
       'rm -rf ' + tempDir,
 
-      'git clone ' + path.resolve(process.cwd()) + ' ' + tempDir,
 
+      'git clone ' + path.resolve(process.cwd()) + ' ' + tempDir,
+      'cp ' + archivePath + ' ' + tempDir,
       // go into the gh-pages directory and do git stuff
       'cd ' + tempDir + ' && '
       + 'git remote remove origin && '
@@ -43,6 +45,7 @@ module.exports = function (gulp) {
       + 'git push origin --delete gh-pages && '
       + 'git checkout --orphan gh-pages && '
       + 'git rm -rf . && '
+      + 'cp ../' + archivePath.replace(/^[\.|\/]+/g, '') + ' . && '
       + 'cp -R ../' + sourceDir.replace(/^[\.|\/]+/g, '') + ' . && '
       + 'git add -A && '
       + 'git commit -m "gh-pages committed from build" && '
