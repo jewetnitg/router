@@ -10,7 +10,7 @@ Adding it to a project
 npm install frontend-router --save
 ```
 
-Alternatively the build can be downloaded <a href="/build.tar.gz">here</a>
+Alternatively the build can be downloaded <a href="build.tar.gz">here</a>
 
 Installing
 ==========
