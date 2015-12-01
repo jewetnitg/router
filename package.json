@@ -11,9 +11,8 @@
   "author": "Rik Hoffbauer",
   "license": "ISC",
   "browserify": {
-    "entries": [
-      "./index.js"
-    ],
+    "standalone": "standalone",
+    "entries": "./standalone.js",
     "debug": true,
     "transform": [
       [

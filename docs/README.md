@@ -1,10 +1,10 @@
 Router
 ============================
 
-This npm module serves to make routing easier.
+This npm module serves to make routing easier. It is built on top of grapnel.
 
-Adding it to a project
-======================
+Adding it to a browserify project
+=================================
 
 ```
 npm install frontend-router --save

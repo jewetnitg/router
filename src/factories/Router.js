@@ -9,6 +9,7 @@ import ControllerRequest from './ControllerRequest';
 
 import controllerMiddlewareFactory from './middleware/controller';
 import policiesMiddlewareFactory from './middleware/policies';
+import executePolicies from '../helpers/executePolicies';
 
 /**
  * The Router factory / class, responsible for creating a Router.
@@ -242,6 +243,25 @@ Router.prototype = {
     this.navigate(url, {
       replace: true
     });
+  },
+
+  /**
+   * Executes one or more policies.
+   *
+   * @method policy
+   * @memberof Router
+   * @instance
+   *
+   * @param policy {String|Array<String>} Policy / Policies to execute
+   * @param data {Object} 'Request' data
+   * @example
+   * router.policy('isLoggedIn')
+   *   .then(...)
+   * router.policy(['isLoggedIn', 'isLoggedInUser'], userModel)
+   *   .then(...)
+   */
+  policy(policy = [], data = {}) {
+    return executePolicies(policy, data, this.options.policies);
   }
 
 };
