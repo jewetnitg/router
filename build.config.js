@@ -20,7 +20,7 @@ var buildConfig = {
 
   tasks: {
 
-    // alias for build:prod
+    // builds the project
     "build": [
       // clean build dir
       "clean",

@@ -6,50 +6,77 @@ if you are not, window.Router will contain the module.
 Lets construct a Router
 ```
 var session = {};
-var router = Router({
-  pushState: true,
-  routes: {
-    '/users': {
-      controller: 'UserController.list'
-    },
-    '/user/:id': {
-      policies: ['isLoggedIn'],
-      controller: 'UserController.details'
+
+var policies = {
+  isLoggedIn: function(req) {
+    if (session.user) {
+      return Promise.resolve();
+    } else {
+      return Promise.reject("Not logged in.");
     }
-  },
-  controllers: {
-    UserController: {
-      details: function (req) {
-        return new Promise(resolve => {
-          resolve({
+  }
+};
+
+var controllers = {
+  UserController: {
+    details: function (req) {
+      return new Promise(resolve => {
+        setTimeout(function () {
+          req.sync({
             model: {
-              id: 'mock',
-              firstName: 'mock'
+              id: 'synced-mock',
+              firstName: 'synced-mock'
             }
           });
+        }, 2000);
+
+        resolve({
+          model: {
+            id: 'mock',
+            firstName: 'mock'
+          }
         });
-      },
-      list: function (req) {
-        return new Promise(resolve => {
-          resolve({
+      });
+    },
+    list: function (req) {
+      return new Promise(resolve => {
+        setTimeout(function () {
+          req.sync({
             collection: [{
-              id: 'mock',
-              firstName: 'mock'
+              id: 'synced-mock',
+              firstName: 'synced-mock'
             }]
-          })
-        });
-      }
+          });
+        }, 2000);
+
+        resolve({
+          collection: [{
+            id: 'mock',
+            firstName: 'mock'
+          }]
+        })
+      });
     }
+  }
+};
+
+var routes = {
+  '/users': {
+    controller: 'UserController.list'
   },
-  policies: {
-    isLoggedIn: function(req) {
-      if (session.user) {
-        return Promise.resolve();
-      } else {
-        return Promise.reject("Not logged in.");
-      }
-    }
+  '/user/:id': {
+    policies: ['isLoggedIn'],
+    controller: 'UserController.details'
   },
+};
+
+var router = Router({
+  pushState: false,
+
+  routes: routes,
+  controllers: controllers,
+  policies: policies,
+
   success: function (route, data) {
     // executed after a succesful route
     // route is the route (object) that was executed
@@ -57,6 +84,7 @@ var router = Router({
     // here you would render a view
     console.log('success', route, data);
   },
+
   fail: function (route, data) {
     // executed after a failed route
     // route is the route (object) that was executed
@@ -65,6 +93,7 @@ var router = Router({
     //   2. 'data', the data the controller / policy failed with
     console.log('fail', route, data);
   },
+
   sync: function (route, data) {
     // executed after a failed route
     // route is the route this req.sync is part of
@@ -72,6 +101,7 @@ var router = Router({
     // here you would propagate changes to your view
     console.log('sync', route, data);
   }
+
 });
 ```
 
