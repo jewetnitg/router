@@ -127,7 +127,7 @@ function Router(options = {}) {
     }
   };
 
-  policyExecutor.add(options.policies);
+  Router.policyExecutor.add(options.policies);
 
   const router = Object.create(Router.prototype, props);
 
@@ -175,7 +175,7 @@ Router.defaults = {
 Router.routeDefaults = {};
 
 /**
- * The {@link PolicyExecutor} instance all {@link Router}s use
+ * The {@link PolicyExecutor} instance all {@link Router}s use, this may be overridden
  *
  * @name policyExecutor
  * @memberof Router
@@ -283,11 +283,12 @@ Router.prototype = {
    *   .then(...)
    */
   policy(policy = [], data = {}) {
-    return policyExecutor.execute(policy, data);
+    return Router.policyExecutor.execute(policy, data);
   }
 
 };
 
+// @todo reserach if this is necessary
 function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
   const elements = document.querySelectorAll(anchorSelector || 'a[href^="/"]:not([href^="//"])');
 

@@ -1,6 +1,6 @@
 {
   "name": "frontend-router",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "frontend-router is a modular browserify module that serves to make working with models easier.",
   "main": "index.js",
   "scripts": {
