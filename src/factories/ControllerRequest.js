@@ -3,7 +3,7 @@
  */
 import _ from 'lodash';
 
-import Request from './Request';
+import Request from 'frontend-policies/src/factories/Request';
 
 /**
  * @class ControllerRequest
@@ -13,19 +13,14 @@ import Request from './Request';
  *
  * @property params {Object} - inherited from {@link Request}, object containing the parameters
  * @property route {Object} - route object
- * @property grapnel {Grapnel} - Grapnel instance
  */
 function ControllerRequest(options = {}) {
-  const req = Request(options, ControllerRequest.prototype, {
-    route: {
-      value: options.route
-    },
-    grapnel: {
-      value: options.grapnel
-    }
-  });
+  const req = Request(options.params, ControllerRequest.prototype);
 
-  req.grapnel.on('navigate', () => {
+  req.route = options.route;
+  req.destruct = options.destruct || req.destruct;
+
+  req.route.router.grapnel.on('navigate', () => {
     req.sync = _.noop;
     req.destruct();
   });
@@ -33,7 +28,7 @@ function ControllerRequest(options = {}) {
   return req;
 }
 
-ControllerRequest.prototype = _.extend({}, Request.prototype, {
+ControllerRequest.prototype = {
 
   /**
    * Called when the ControllerRequest is destructed,
@@ -56,16 +51,11 @@ ControllerRequest.prototype = _.extend({}, Request.prototype, {
    * @memberof ControllerRequest
    *
    * @param data
-   *
-   * @todo refactor to use Router instance
    */
   sync(data = {}) {
-    this.grapnel.trigger('controller:sync', {
-      route: this.route,
-      data
-    });
+    this.route.router.sync(this.route, data);
   }
 
-});
+};
 
 export default ControllerRequest;

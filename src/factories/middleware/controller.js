@@ -3,19 +3,16 @@
  */
 import executeController from '../../helpers/executeController';
 
-function controllerMiddlewareFactory(route, grapnel, controllers) {
+function controllerMiddlewareFactory(route) {
   return function controllerMiddleware(req, res) {
     //noinspection JSUnresolvedVariable
-    executeController(route.controller, req.params, controllers, route, grapnel)
+    executeController(route.controller, req.params, route)
       .then((data) => {
-        grapnel.trigger('controller:success', {
-          data,
-          route
-        });
+        route.router.success(route, data);
       }, (data) => {
         res.preventDefault();
-        grapnel.trigger('controller:failure', {
-          route,
+        route.router.fail(route, {
+          reason: 'controller',
           data
         });
       });

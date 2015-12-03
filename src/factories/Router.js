@@ -4,12 +4,9 @@
 import _ from 'lodash';
 import Grapnel from 'grapnel';
 
-import Request from './Request';
-import ControllerRequest from './ControllerRequest';
-
 import controllerMiddlewareFactory from './middleware/controller';
 import policiesMiddlewareFactory from './middleware/policies';
-import executePolicies from '../helpers/executePolicies';
+import policyExecutor from '../singletons/policyExecutor';
 
 /**
  * The Router factory / class, responsible for creating a Router.
@@ -115,8 +112,23 @@ function Router(options = {}) {
      */
     options: {
       value: options
+    },
+    success: {
+      value: options.success
+    },
+    fail: {
+      value: options.fail
+    },
+    sync: {
+      value: options.sync
+    },
+    controllers: {
+      value: options.controllers
     }
   };
+
+  policyExecutor.add(options.policies);
+
   const router = Object.create(Router.prototype, props);
 
   makeAnchorDOMElementsUseRouterNavigate(router, options.anchorSelector);
@@ -161,6 +173,16 @@ Router.defaults = {
  * @default {}
  */
 Router.routeDefaults = {};
+
+/**
+ * The {@link PolicyExecutor} instance all {@link Router}s use
+ *
+ * @name policyExecutor
+ * @memberof Router
+ * @static
+ * @type PolicyExecutor
+ */
+Router.policyExecutor = policyExecutor;
 
 Router.prototype = {
 
@@ -261,7 +283,7 @@ Router.prototype = {
    *   .then(...)
    */
   policy(policy = [], data = {}) {
-    return executePolicies(policy, data, this.options.policies);
+    return policyExecutor.execute(policy, data);
   }
 
 };
@@ -297,7 +319,7 @@ function replaceNavigate(grapnel, frag) {
 }
 
 function constructGrapnelRouter(options = {}, router) {
-  const grapnel = new Grapnel({
+  router.grapnel = new Grapnel({
     pushState: options.pushState,
     root: options.root,
     env: options.env,
@@ -305,50 +327,25 @@ function constructGrapnelRouter(options = {}, router) {
     hashBang: options.hashBang
   });
 
-  addRoutesToGrapnelRouter(options, grapnel);
+  addRoutesToGrapnelRouter(options, router);
 
-  grapnel.on('controller:success', (data) => {
-    options.success(data.route, data.data);
-  });
-
-  grapnel.on('controller:sync', (data) => {
-    options.sync(data.route, data.data);
-  });
-
-  grapnel.on('controller:failure', (data) => {
-    options.fail(data.route, {
-      reason: 'controller',
-      data: data.data
-    });
-  });
-
-  grapnel.on('policy:failure', (data) => {
-    if (data.route.unauthorized) {
-      router.redirect(data.route.unauthorized);
-    }
-
-    options.fail(data.route, {
-      reason: 'policy',
-      data: data.data
-    });
-  });
-
-  return grapnel;
+  return router.grapnel;
 }
 
-function addRoutesToGrapnelRouter(options, grapnel) {
+function addRoutesToGrapnelRouter(options, router) {
   _.each(options.routes, (route, routeName) => {
     _.merge(route, Router.routeDefaults, {
-      route: routeName
+      route: routeName,
+      router
     }, route);
 
     const middleware = [
-      policiesMiddlewareFactory(route, grapnel, options.policies),
-      controllerMiddlewareFactory(route, grapnel, options.controllers)
+      policiesMiddlewareFactory(route),
+      controllerMiddlewareFactory(route)
     ];
 
     middleware.unshift(route.route);
-    grapnel.get.apply(grapnel, middleware);
+    router.grapnel.get.apply(router.grapnel, middleware);
 
     return route;
   });

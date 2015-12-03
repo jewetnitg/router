@@ -1,25 +1,24 @@
 /**
  * @author rik
  */
-import executePolicies from '../../helpers/executePolicies';
+import policyExecutor from '../../singletons/policyExecutor';
 
-function policyMiddlewareFactory(route, grapnel, policies) {
+function policyMiddlewareFactory(route) {
   return function policyMiddleware(req, res, next) {
     if (route.policies && route.policies.length) {
-      executePolicies(route.policies, req.params, policies)
-        .then((data) => {
-          grapnel.trigger('policy:success', {
-            route,
-            data
-          });
+      policyExecutor.execute(route.policies, req.params)
+        .then(() => {
           next();
         }, (data) => {
           res.preventDefault();
-          grapnel.trigger('policy:failure', {
-            route,
+          if (route.unauthorized) {
+            route.router.redirect(route.unauthorized);
+          }
+
+          route.router.fail(route, {
+            reason: 'policy',
             data
           });
-          // @todo redirect to unauthorized route if specified
         });
     } else {
       next();
