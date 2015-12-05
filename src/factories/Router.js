@@ -320,13 +320,15 @@ function replaceNavigate(grapnel, frag) {
 }
 
 function constructGrapnelRouter(options = {}, router) {
-  router.grapnel = new Grapnel({
-    pushState: options.pushState,
-    root: options.root,
-    env: options.env,
-    mode: options.mode,
-    hashBang: options.hashBang
-  });
+  const grapnelOptions = _.pick(options, [
+    'pushState',
+    'root',
+    'env',
+    'mode',
+    'hashBang'
+  ]);
+
+  router.grapnel = new Grapnel(grapnelOptions);
 
   addRoutesToGrapnelRouter(options, router);
 
@@ -334,6 +336,19 @@ function constructGrapnelRouter(options = {}, router) {
 }
 
 function addRoutesToGrapnelRouter(options, router) {
+  options.routes = options.routes || {};
+
+  if (options.defaultRoute) {
+    const routeObj = options.routes[options.defaultRoute];
+
+    if (!routeObj) {
+      throw new Error(`Default route '${options.defaultRoute}' doesn't exist.`);
+    }
+
+    options.routes[''] = routeObj;
+    options.routes['/'] = routeObj;
+  }
+
   _.each(options.routes, (route, routeName) => {
     _.merge(route, Router.routeDefaults, {
       route: routeName,
