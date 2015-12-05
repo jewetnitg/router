@@ -26,10 +26,11 @@
   },
   "eslintConfig": {},
   "dependencies": {
+    "babel-polyfill": "^6.3.14",
+    "frontend-policies": "file:modules/frontend-policies",
     "grapnel": "^0.6.2",
     "jquery": "2.1.4",
     "lodash": "^3.10.1",
-    "frontend-policies": "file:modules/frontend-policies",
     "require-globify": "^1.3.0"
   },
   "devDependencies": {
