@@ -4,6 +4,7 @@
   "description": "frontend-router is a modular browserify module that serves to make working with models easier.",
   "main": "index.js",
   "scripts": {
+    "preinstall": "npm i --prefix modules/frontend-policies",
     "build": "gulp build",
     "test": "gulp test",
     "ci": "gulp test:ci"
@@ -25,6 +26,9 @@
     ]
   },
   "eslintConfig": {},
+  "bundledDependencies": [
+    "frontend-policies"
+  ],
   "dependencies": {
     "babel-polyfill": "^6.3.14",
     "frontend-policies": "file:modules/frontend-policies",
