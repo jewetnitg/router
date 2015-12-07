@@ -7,7 +7,7 @@ var source = require('vinyl-source-stream');
 var packageJson = require('../package.json');
 
 module.exports = function (gulp) {
-
+  packageJson.browserify.entries = ['node_modules/babel-polyfill/lib/index', packageJson.browserify.entries];
   gulp.task('browserify', function () {
     return doBrowserify(packageJson.browserify);
   });
