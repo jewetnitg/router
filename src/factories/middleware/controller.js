@@ -11,6 +11,12 @@ function controllerMiddlewareFactory(route) {
         route.router.success(route, data);
       }, (data) => {
         res.preventDefault();
+        const errorRoute = route.errorRoute || route.router.options.errorRoute;
+
+        if (errorRoute) {
+          route.router.redirect(errorRoute);
+        }
+
         route.router.fail(route, {
           reason: 'controller',
           data

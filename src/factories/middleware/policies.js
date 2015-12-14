@@ -9,8 +9,10 @@ function policyMiddlewareFactory(route) {
           next();
         }, (data) => {
           res.preventDefault();
-          if (route.unauthorized) {
-            route.router.redirect(route.unauthorized);
+          const unauthorizedRoute = route.unauthorized || route.router.options.unauthorizedRoute;
+
+          if (unauthorizedRoute) {
+            route.router.redirect(unauthorizedRoute);
           }
 
           route.router.fail(route, {

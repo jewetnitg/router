@@ -29,7 +29,6 @@ import policyExecutor from '../singletons/policyExecutor';
  * @property mode {Boolean} Grapnel mode option
  * @property hashBang {Boolean} Grapnel hashBang option
  *
- * @todo implement defaultRoute, notFoundRoute, errorRoute (for controller errors)
  *
  * @example
  * const router = Router({
