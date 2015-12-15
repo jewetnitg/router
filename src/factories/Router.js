@@ -4,9 +4,14 @@
 import _ from 'lodash';
 import Grapnel from 'grapnel';
 
-import controllerMiddlewareFactory from './middleware/controller';
-import policiesMiddlewareFactory from './middleware/policies';
-import policyExecutor from '../singletons/policyExecutor';
+import securityMiddlewareFactory from './middleware/security';
+import successMiddlewareFactory from './middleware/success';
+import dataMiddlewareFactory from './middleware/data';
+import RouterValidator from '../validators/Router';
+import View from 'frontend-view';
+import MiddlewareRunner from './MiddlewareRunner';
+import DataResponseFactoryFactory from './DataResponseFactory';
+import StaticView from './StaticView';
 
 /**
  * The Router factory / class, responsible for creating a Router.
@@ -15,13 +20,14 @@ import policyExecutor from '../singletons/policyExecutor';
  *
  * @param options {Object}
  *
- * @property controllers {Object<Object<Function>>} Hashmap containing Controllers
- * @property policies {Object<Function>} Hashmap containing policies
+ * @property middleware {Object<Object<Function>>} Hashmap containing security and data middleware
  * @property routes {Object<Object>} Hashmap containing routes
  * @property success {Function} Function that gets executed when a route has successfully executed
  * @property fail {Function} Function that gets executed when a route has failed to execute successfully
  * @property sync {Function} Function that gets executed when a controller syncs
  * @property {String} [anchorSelector='a[href^="/"]:not([href^="//"])'] - jQuery selector that represents all anchors that should be event.preventDefault()'ed and use the router to navigate instead
+ * @property error {String} Reference to a route, route that should be shown when an error has occurred
+ * @property unauthorized {String} Reference to a route, route that should be shown when security for a route failed
  *
  * @property pushState {Boolean} Grapnel pushState option
  * @property root {Boolean} Grapnel root option
@@ -29,42 +35,36 @@ import policyExecutor from '../singletons/policyExecutor';
  * @property mode {Boolean} Grapnel mode option
  * @property hashBang {Boolean} Grapnel hashBang option
  *
+ * @todo implement static views
  *
  * @example
  * const router = Router({
  *   pushState: true,
- *   success(route, data) {
- *     // the route and data resolved from the Controller
- *   },
- *   fail(route, data) {
- *     // the failed route and data from policy/controller that failed
- *     data.reason; // 'policy' or 'controller'
- *     data.data; // data policy/controlller rejected with
- *   },
- *   sync(route, data) {
- *     // controller sync happened for the route passed in with data passed in
- *   },
+ *   views: {},
  *   routes: {
  *     '/testReject': {
- *       policies: ['test'],
  *       controller: 'test.test'
  *     }
  *   },
- *   '/testResolve': {
- *       policies: [],
- *       controller: 'test.test'
+ *   '/onlyIfLoggedIn': {
+ *       security: ['user.isLoggedIn'],
+ *       data: ['user.ensure']
  *     }
  *   },
- *   policies: {
- *     test: function() {
- *       return Promise.reject();
- *     }
- *   },
- *   controllers: {
- *     test: {
- *       test: function () {
- *         return {
- *           test: true
+ *   middleware: {
+ *     security: {
+ *       user: {
+ *         isLoggedIn: function(req) {
+ *           return req.session.user ? Promise.resolve() : Promise.reject();
+ *         }
+ *       }
+ *     },
+ *     data: {
+ *       user: {
+ *         ensure: function (req, res) {
+ *           res.user = res.user || {
+ *             name: 'bob'
+ *           };
  *         }
  *       }
  *     }
@@ -75,32 +75,9 @@ import policyExecutor from '../singletons/policyExecutor';
 function Router(options = {}) {
   _.merge(options, Router.defaults, options);
 
-  if (typeof options.success !== 'function') {
-    throw new Error(`Can't construct router, success method not provided.`);
-  }
-
-  if (typeof options.fail !== 'function') {
-    throw new Error(`Can't construct router, fail method not provided.`);
-  }
-
-  if (typeof options.sync !== 'function') {
-    throw new Error(`Can't construct router, sync method not provided.`);
-  }
-
-  if (typeof options.routes !== 'object') {
-    throw new Error(`Can't construct router, routes object not provided.`);
-  }
-
-  if (typeof options.policies !== 'object') {
-    throw new Error(`Can't construct router, policies object not provided.`);
-  }
-
-  if (typeof options.controllers !== 'object') {
-    throw new Error(`Can't construct router, controllers object not provided.`);
-  }
+  RouterValidator.construct(options);
 
   const props = {
-
     /**
      * The options as passed into the factory
      *
@@ -112,26 +89,34 @@ function Router(options = {}) {
     options: {
       value: options
     },
-    success: {
-      value: options.success
+    views: {
+      value: {}
     },
-    fail: {
-      value: options.fail
+    staticViews: {
+      value: {}
     },
-    sync: {
-      value: options.sync
+    unauthorized: {
+      value: options.unauthorized
     },
-    controllers: {
-      value: options.controllers
+    error: {
+      value: options.error
     }
   };
 
-  Router.policyExecutor.add(options.policies);
-
   const router = Object.create(Router.prototype, props);
+  router.middleware = MiddlewareRunner({
+    security: {
+      middleware: options.middleware.security
+    },
+    data: {
+      res: true,
+      resFactory: DataResponseFactoryFactory(router),
+      middleware: options.middleware.data
+    }
+  });
 
+  // @todo research if this is necessary
   makeAnchorDOMElementsUseRouterNavigate(router, options.anchorSelector);
-
 
   /**
    * An instance of the Grapnel router, responsible for actual routing
@@ -142,7 +127,7 @@ function Router(options = {}) {
    * @type Object
    */
   router.grapnel = constructGrapnelRouter(options, router);
-
+  constructStaticViews.call(router);
   return router;
 }
 
@@ -154,13 +139,21 @@ function Router(options = {}) {
  * @memberof Router
  * @static
  * @type Object
- * @property {Object<Function>} [policies={}] Policies specified as a hashmap
- * @property {Object<Object<Function>>} [controllers={}] Controllers specified as a hashmap
+ * @property {Object<Function>} [middleware={}] Middleware specified as a hashmap
  */
 Router.defaults = {
-  policies: {},
-  controllers: {}
+  middleware: {}
 };
+
+/**
+ * {@link View} factory
+ * @type Function
+ * @param options {Object} properties for a {@link View}, see the {@link View} documentation.
+ */
+Router.View = View;
+
+// @todo implement
+Router.StaticView = StaticView;
 
 /**
  * Default properties for route objects, gets merged (deeply) with the routes.
@@ -173,17 +166,51 @@ Router.defaults = {
  */
 Router.routeDefaults = {};
 
-/**
- * The {@link PolicyExecutor} instance all {@link Router}s use, this may be overridden
- *
- * @name policyExecutor
- * @memberof Router
- * @static
- * @type PolicyExecutor
- */
-Router.policyExecutor = policyExecutor;
-
 Router.prototype = {
+
+  success(route, data = {}) {
+    const view = ensureViewForRoute.call(this, route);
+
+    if (this.currentView && this.currentView !== view) {
+      this.currentView.hide();
+    }
+
+    this.currentRoute = route;
+    this.currentView = view;
+
+    view.render(data);
+    renderStaticViews.call(this, route.staticViews, data);
+
+    // for render server
+    if (window._onRouterReady) {
+      window._onRouterReady();
+      delete window._onRouterReady;
+    }
+  },
+
+  sync(data = {}) {
+    if (!this.currentRoute) {
+      throw new Error(`Can't sync data, no current route.`);
+    }
+
+    if (!this.currentView) {
+      throw new Error(`Can't sync data, no current route.`);
+    }
+
+    this.currentView.sync(data);
+    renderStaticViews.call(this, this.currentRoute.staticViews, data);
+  },
+
+  fail(route, data) {
+    switch (data.reason) {
+      case 'security':
+        console.log('security failed for route', route, data);
+        break;
+      case 'data':
+        console.log('data failed for route', route, data);
+        break;
+    }
+  },
 
   /**
    * Navigates to a url
@@ -198,7 +225,7 @@ Router.prototype = {
    * @property [trigger=true] {Boolean} - Indicates a route event should be triggered, so the route gets executed
    * @property [replace=false] {Boolean} - Indicates the history item should be replaced
    *
-   * @todo add a data param so that urls an contains splats that will be filled with the data
+   * @todo add a data param so that urls can contains splats that will be filled with the data, use Router#makeUrl
    * @example
    * // regular navigate
    * router.navigate('/user/3');
@@ -256,7 +283,7 @@ Router.prototype = {
    *
    * @param url {String} Url to redirect to
    *
-   * @todo add a data param so that urls an contains splats that will be filled with the data
+   * @todo add a data param so that urls an contains splats that will be filled with the data, use Router#makeUrl
    * @example
    * router.redirect('/user/5');
    */
@@ -267,27 +294,61 @@ Router.prototype = {
   },
 
   /**
-   * Executes one or more policies.
+   * Fills a routes splats with the data provided
    *
-   * @method policy
-   * @memberof Router
-   * @instance
+   * @param route {String} The route to fill with data, /user/:id for example
+   * @param data {Object} The data to fill the route with, {id: 3} for example
    *
-   * @param policy {String|Array<String>} Policy / Policies to execute
-   * @param data {Object} 'Request' data
+   * @returns String
+   *
+   * @todo implement
+   *
    * @example
-   * router.policy('isLoggedIn')
-   *   .then(...)
-   * router.policy(['isLoggedIn', 'isLoggedInUser'], userModel)
-   *   .then(...)
+   * < router.makeUrl('/user/:id', { id: 3 });
+   * > "/user/3";
    */
-  policy(policy = [], data = {}) {
-    return Router.policyExecutor.execute(policy, data);
+  makeUrl(route, data) {
+    throw new Error(`makeUrl is not implemented yet`);
+  },
+
+  /**
+   * Runs one or more security middleware with data.
+   *
+   * @param middleware {String|Array<String>} Middleware(s) to execute
+   * @param {Object} [data={}] - Data to pass to the middleware as parameters
+   *
+   * @returns {Promise} Promise that resolves if the middleware executed successfully, and rejects if it doesn't
+   * @example
+   * router.security('user.isLoggedIn')
+   *   .then(
+   *     () => {...}, // logged in
+   *     () => {...} // NOT logged in
+   *   );
+   */
+  security(middleware = [], data = {}) {
+    return this.middleware.security.run(middleware, data);
+  },
+
+  /**
+   * Runs one or more data middleware with data.
+   *
+   * @param middleware {String|Array<String>} Middleware(s) to execute
+   * @param {Object} [data={}] - Data to pass to the middleware as parameters
+   *
+   * @returns {Promise} Promise that resolves if the middleware executed successfully, and rejects if it doesn't
+   * @example
+   * router.data('user.ensure')
+   *   .then(...);
+   */
+  data(middleware = [], data = {}) {
+    return this.middleware.data.run(middleware, data);
   }
 
 };
 
-// @todo reserach if this is necessary
+Router.staticViews = {};
+
+// @todo research if this is necessary
 function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
   const elements = document.querySelectorAll(anchorSelector || 'a[href^="/"]:not([href^="//"])');
 
@@ -300,7 +361,7 @@ function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
   });
 }
 
-// originally take from Grapnel.fragment.set, changed to replace the current history item instead of add to the history
+// originally taken from Grapnel.fragment.set, changed to replace the current history item instead of adding to the history
 function replaceNavigate(grapnel, frag) {
   if (grapnel.options.mode === 'pushState') {
     frag = (grapnel.options.root) ? (grapnel.options.root + frag) : frag;
@@ -344,8 +405,9 @@ function addRoutesToGrapnelRouter(options, router) {
     });
 
     const middleware = [
-      policiesMiddlewareFactory(route),
-      controllerMiddlewareFactory(route)
+      securityMiddlewareFactory(route),
+      dataMiddlewareFactory(route),
+      successMiddlewareFactory(route)
     ];
 
     middleware.unshift(route.route);
@@ -394,6 +456,51 @@ function redirectMiddlewareFactory(router, route) {
       router.redirect(route);
     }
   }
+}
+
+function ensureViewForRoute(route) {
+  const viewName = route.view;
+
+  if (!this.views[viewName]) {
+    const viewOptions = this.options.views[viewName];
+
+    // for render server, if this is true, the rendered element is already on the page
+    if (window._preRendered) {
+      viewOptions.el = viewOptions.$holder
+        ? $(`> ${viewOptions.tag}`, viewOptions.$holder)[0]
+        : $(`${viewOptions.holder} > ${viewOptions.tag}`)[0];
+    }
+
+    viewOptions.name = viewOptions.name || viewName;
+
+    if (viewOptions.static) {
+      _.defaults(viewOptions, this.options.staticViewConfig);
+    } else {
+      _.defaults(viewOptions, this.options.viewConfig);
+    }
+
+    this.views[viewName] = View(viewOptions);
+  }
+
+  return this.views[viewName];
+}
+
+function constructStaticViews() {
+  _.each(this.options.staticViews, (staticView, staticViewName) => {
+    staticView.router = this;
+    staticView.name = staticView.name || staticViewName;
+    this.staticViews[staticViewName] = StaticView(staticView);
+  });
+}
+
+function renderStaticViews(staticViews, data = {}) {
+  _.each(this.staticViews, (staticView, name) => {
+    if (staticViews && staticViews.indexOf(name) !== -1) {
+      staticView.view.render(data);
+    } else {
+      staticView.view.hide();
+    }
+  });
 }
 
 export default Router;
