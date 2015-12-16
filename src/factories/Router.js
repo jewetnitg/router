@@ -353,7 +353,10 @@ Router.prototype = {
    *   .then(...);
    */
   data(middleware = [], data = {}) {
-    return this.middleware.data.run(middleware, data);
+    return this.middleware.data.run(middleware, data)
+      .then(data => {
+        return _.omit(data, ['sync', 'destruct']);
+      });
   }
 
 };
