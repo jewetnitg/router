@@ -12,6 +12,7 @@ const RouterValidator = {
     if (typeof options.middleware !== 'object') {
       throw new Error(`Can't construct router, middleware object not provided.`);
     }
+
   }
 
 };

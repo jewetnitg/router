@@ -4,13 +4,15 @@
 import _ from 'lodash';
 import Grapnel from 'grapnel';
 
-import securityMiddlewareFactory from './middleware/security';
-import successMiddlewareFactory from './middleware/success';
-import dataMiddlewareFactory from './middleware/data';
+
+import replaceNavigate from '../helpers/replaceNavigate';
+import makeAnchorDOMElementsUseRouterNavigate from '../helpers/makeAnchorDOMElementsUseRouterNavigate';
+
 import RouterValidator from '../validators/Router';
 import View from 'frontend-view';
 import MiddlewareRunner from './MiddlewareRunner';
 import DataResponseFactoryFactory from './DataResponseFactory';
+import GrapnelFactory from './Grapnel';
 import StaticView from './StaticView';
 
 /**
@@ -20,11 +22,8 @@ import StaticView from './StaticView';
  *
  * @param options {Object}
  *
- * @property middleware {Object<Object<Function>>} Hashmap containing security and data middleware
+ * @property middleware {Object} Hashmap containing security and data middleware
  * @property routes {Object<Object>} Hashmap containing routes
- * @property success {Function} Function that gets executed when a route has successfully executed
- * @property fail {Function} Function that gets executed when a route has failed to execute successfully
- * @property sync {Function} Function that gets executed when a controller syncs
  * @property {String} [anchorSelector='a[href^="/"]:not([href^="//"])'] - jQuery selector that represents all anchors that should be event.preventDefault()'ed and use the router to navigate instead
  * @property error {String} Reference to a route, route that should be shown when an error has occurred
  * @property unauthorized {String} Reference to a route, route that should be shown when security for a route failed
@@ -35,18 +34,12 @@ import StaticView from './StaticView';
  * @property mode {Boolean} Grapnel mode option
  * @property hashBang {Boolean} Grapnel hashBang option
  *
- * @todo implement static views
- *
  * @example
  * const router = Router({
  *   pushState: true,
- *   views: {},
+ *   views: {...}, // hashmap of views by name, see frontend-view spec
  *   routes: {
- *     '/testReject': {
- *       controller: 'test.test'
- *     }
- *   },
- *   '/onlyIfLoggedIn': {
+ *     '/onlyIfLoggedIn': {
  *       security: ['user.isLoggedIn'],
  *       data: ['user.ensure']
  *     }
@@ -104,6 +97,7 @@ function Router(options = {}) {
   };
 
   const router = Object.create(Router.prototype, props);
+
   router.middleware = MiddlewareRunner({
     security: {
       middleware: options.middleware.security
@@ -115,9 +109,6 @@ function Router(options = {}) {
     }
   });
 
-  // @todo research if this is necessary
-  makeAnchorDOMElementsUseRouterNavigate(router, options.anchorSelector);
-
   /**
    * An instance of the Grapnel router, responsible for actual routing
    *
@@ -126,7 +117,7 @@ function Router(options = {}) {
    * @instance
    * @type Object
    */
-  router.grapnel = constructGrapnelRouter(options, router);
+  router.grapnel = GrapnelFactory(options, router, Router);
   constructStaticViews.call(router);
   return router;
 }
@@ -152,7 +143,11 @@ Router.defaults = {
  */
 Router.View = View;
 
-// @todo implement
+/**
+ * {@link StaticView} factory
+ * @type Function
+ * @param options {Object} properties for a {@link StaticView}, see the {@link StaticView} documentation.
+ */
 Router.StaticView = StaticView;
 
 /**
@@ -179,13 +174,18 @@ Router.prototype = {
     this.currentView = view;
 
     view.render(data);
-    renderStaticViews.call(this, route.staticViews, data);
+    renderStaticViews.call(this, route.staticViews, data)
+      .then(() => {
+        // for render server
+        if (window._onRouterReady) {
+          window._onRouterReady();
+          delete window._onRouterReady;
+        }
 
-    // for render server
-    if (window._onRouterReady) {
-      window._onRouterReady();
-      delete window._onRouterReady;
-    }
+        // @todo research if this is necessary
+        makeAnchorDOMElementsUseRouterNavigate(this);
+      });
+
   },
 
   sync(data = {}) {
@@ -296,6 +296,10 @@ Router.prototype = {
   /**
    * Fills a routes splats with the data provided
    *
+   * @method makeUrl
+   * @memberof Router
+   * @instance
+   *
    * @param route {String} The route to fill with data, /user/:id for example
    * @param data {Object} The data to fill the route with, {id: 3} for example
    *
@@ -313,6 +317,10 @@ Router.prototype = {
 
   /**
    * Runs one or more security middleware with data.
+   *
+   * @method security
+   * @memberof Router
+   * @instance
    *
    * @param middleware {String|Array<String>} Middleware(s) to execute
    * @param {Object} [data={}] - Data to pass to the middleware as parameters
@@ -332,6 +340,10 @@ Router.prototype = {
   /**
    * Runs one or more data middleware with data.
    *
+   * @method data
+   * @memberof Router
+   * @instance
+   *
    * @param middleware {String|Array<String>} Middleware(s) to execute
    * @param {Object} [data={}] - Data to pass to the middleware as parameters
    *
@@ -346,118 +358,6 @@ Router.prototype = {
 
 };
 
-Router.staticViews = {};
-
-// @todo research if this is necessary
-function makeAnchorDOMElementsUseRouterNavigate(router, anchorSelector) {
-  const elements = document.querySelectorAll(anchorSelector || 'a[href^="/"]:not([href^="//"])');
-
-  _.each(elements, element => {
-    element.addEventListener('click', (e) => {
-      e.preventDefault();
-      const url = e.target.href;
-      router.navigate(url);
-    });
-  });
-}
-
-// originally taken from Grapnel.fragment.set, changed to replace the current history item instead of adding to the history
-function replaceNavigate(grapnel, frag) {
-  if (grapnel.options.mode === 'pushState') {
-    frag = (grapnel.options.root) ? (grapnel.options.root + frag) : frag;
-    window.history.replaceState({}, "", frag);
-  } else if (window.location) {
-    frag = (grapnel.options.hashBang ? '!' : '') + frag;
-    if (!window.history.replaceState) {
-      console.error(`Can't replace url to '${frag}', replaceState not available, falling back to doing normal navigate, which creates a history item.`);
-      window.location.hash = frag;
-    } else {
-      window.history.replaceState({}, "", `#${frag}`);
-    }
-  } else {
-    window._pathname = frag || '';
-  }
-}
-
-function constructGrapnelRouter(options = {}, router) {
-  const grapnelOptions = _.pick(options, [
-    'pushState',
-    'root',
-    'env',
-    'mode',
-    'hashBang'
-  ]);
-
-  router.grapnel = new Grapnel(grapnelOptions);
-
-  addRoutesToGrapnelRouter(options, router);
-
-  return router.grapnel;
-}
-
-function addRoutesToGrapnelRouter(options, router) {
-  options.routes = options.routes || {};
-
-  _.each(options.routes, (route, routeName) => {
-    _.defaults(route, Router.routeDefaults, {
-      route: routeName,
-      router
-    });
-
-    const middleware = [
-      securityMiddlewareFactory(route),
-      dataMiddlewareFactory(route),
-      successMiddlewareFactory(route)
-    ];
-
-    middleware.unshift(route.route);
-    router.grapnel.get.apply(router.grapnel, middleware);
-
-    return route;
-  });
-
-  addDefaultRouteToGrapnelRouter(options, router);
-  addNotFoundRouteToGrapnelRouter(options, router);
-}
-
-function addDefaultRouteToGrapnelRouter(options, router) {
-  const defaultRoute = options.defaultRoute;
-
-  if (defaultRoute) {
-    if (!options.routes[defaultRoute]) {
-      throw new Error(`Default route '${defaultRoute}' doesn't exist.`);
-    }
-
-    const defaultRouteMiddleware = redirectMiddlewareFactory(router, defaultRoute);
-
-    router.grapnel.get('/', defaultRouteMiddleware);
-    router.grapnel.get('', defaultRouteMiddleware);
-  }
-}
-
-function addNotFoundRouteToGrapnelRouter(options, router) {
-  const notFoundRoute = options.notFoundRoute;
-
-  if (notFoundRoute) {
-    if (!options.routes[notFoundRoute]) {
-      throw new Error(`Default route '${notFoundRoute}' doesn't exist.`);
-    }
-
-    const notFoundMiddleware = redirectMiddlewareFactory(router, options.notFoundRoute);
-
-    router.grapnel.get('/*', notFoundMiddleware);
-    router.grapnel.get('*', notFoundMiddleware);
-  }
-}
-
-function redirectMiddlewareFactory(router, route) {
-  return function redirectMiddleware(req, event) {
-    if (!event.parent()) {
-      router.redirect(route);
-    }
-  }
-}
-
 function ensureViewForRoute(route) {
   const viewName = route.view;
 
@@ -471,15 +371,11 @@ function ensureViewForRoute(route) {
         : $(`${viewOptions.holder} > ${viewOptions.tag}`)[0];
     }
 
-    viewOptions.name = viewOptions.name || viewName;
+    _.defaults(viewOptions, this.options.viewConfig, {
+      name: viewName
+    });
 
-    if (viewOptions.static) {
-      _.defaults(viewOptions, this.options.staticViewConfig);
-    } else {
-      _.defaults(viewOptions, this.options.viewConfig);
-    }
-
-    this.views[viewName] = View(viewOptions);
+    this.views[viewOptions.name] = View(viewOptions);
   }
 
   return this.views[viewName];
@@ -494,13 +390,19 @@ function constructStaticViews() {
 }
 
 function renderStaticViews(staticViews, data = {}) {
+  const promises = [];
+
   _.each(this.staticViews, (staticView, name) => {
     if (staticViews && staticViews.indexOf(name) !== -1) {
-      staticView.view.render(data);
+      promises.push(
+        staticView.view.render(data)
+      );
     } else {
       staticView.view.hide();
     }
   });
+
+  return Promise.all(promises);
 }
 
 export default Router;
