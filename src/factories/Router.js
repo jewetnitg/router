@@ -10,7 +10,7 @@ import makeAnchorDOMElementsUseRouterNavigate from '../helpers/makeAnchorDOMElem
 
 import RouterValidator from '../validators/Router';
 import View from 'frontend-view';
-import MiddlewareRunner from './MiddlewareRunner';
+import MiddlewareRunner from 'frontend-middleware';
 import DataResponseFactoryFactory from './DataResponseFactory';
 import GrapnelFactory from './Grapnel';
 import StaticView from './StaticView';
