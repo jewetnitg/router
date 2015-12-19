@@ -12,6 +12,7 @@ import RouterValidator from '../validators/Router';
 import View from 'frontend-view';
 import MiddlewareRunner from 'frontend-middleware';
 import DataResponseFactoryFactory from './DataResponseFactory';
+import RequestFactoryFactory from './RequestFactory';
 import GrapnelFactory from './Grapnel';
 import StaticView from './StaticView';
 
@@ -88,6 +89,9 @@ function Router(options = {}) {
     staticViews: {
       value: {}
     },
+    session: {
+      value: options.session || {}
+    },
     unauthorized: {
       value: options.unauthorized
     },
@@ -104,6 +108,7 @@ function Router(options = {}) {
     },
     data: {
       res: true,
+      reqFactory: RequestFactoryFactory(router.session),
       resFactory: DataResponseFactoryFactory(router),
       middleware: options.middleware.data
     }
@@ -163,6 +168,7 @@ Router.routeDefaults = {};
 
 Router.prototype = {
 
+  // @todo make private, refactor to success middleware, should never be called by the end-user
   success(route, data = {}) {
     const view = ensureViewForRoute.call(this, route);
 
@@ -188,6 +194,7 @@ Router.prototype = {
 
   },
 
+  // @todo make private, should never be called by the end-user
   sync(data = {}) {
     if (!this.currentRoute) {
       throw new Error(`Can't sync data, no current route.`);
@@ -201,13 +208,29 @@ Router.prototype = {
     renderStaticViews.call(this, this.currentRoute.staticViews, data);
   },
 
+  // @todo make private, should never be called by the end-user
   fail(route, data) {
     switch (data.reason) {
       case 'security':
-        console.log('security failed for route', route, data);
+        const unauthorized = route.unauthorized || this.options.unauthorizedRoute;
+
+        if (typeof unauthorized === 'string') {
+          this.redirect(unauthorized);
+        } else if (typeof unauthorized === 'function') {
+          unauthorized(route, data);
+        }
         break;
       case 'data':
-        console.log('data failed for route', route, data);
+        const error = route.error || this.options.errorRoute;
+
+        if (typeof error === 'string') {
+          this.redirect(error);
+        } else if (typeof error === 'function') {
+          error(route, data);
+        }
+
+        console.warn('error in data middleware', route, data);
+
         break;
     }
   },
