@@ -9,12 +9,8 @@ import replaceNavigate from '../helpers/replaceNavigate';
 import makeAnchorDOMElementsUseRouterNavigate from '../helpers/makeAnchorDOMElementsUseRouterNavigate';
 
 import RouterValidator from '../validators/Router';
-import View from 'frontend-view';
-import MiddlewareRunner from 'frontend-middleware';
-import DataResponseFactoryFactory from './DataResponseFactory';
-import RequestFactoryFactory from './RequestFactory';
+import Director from 'frontend-view';
 import GrapnelFactory from './Grapnel';
-import StaticView from './StaticView';
 
 /**
  * The Router factory / class, responsible for creating a Router.
@@ -68,6 +64,7 @@ import StaticView from './StaticView';
  */
 function Router(options = {}) {
   _.merge(options, Router.defaults, options);
+  options.session = options.session || {};
 
   RouterValidator.construct(options);
 
@@ -83,14 +80,8 @@ function Router(options = {}) {
     options: {
       value: options
     },
-    views: {
-      value: {}
-    },
-    staticViews: {
-      value: {}
-    },
     session: {
-      value: options.session || {}
+      value: options.session
     },
     unauthorized: {
       value: options.unauthorized
@@ -102,16 +93,15 @@ function Router(options = {}) {
 
   const router = Object.create(Router.prototype, props);
 
-  router.middleware = MiddlewareRunner({
-    security: {
-      middleware: options.middleware.security
-    },
-    data: {
-      res: true,
-      reqFactory: RequestFactoryFactory(router.session),
-      resFactory: DataResponseFactoryFactory(router),
-      middleware: options.middleware.data
-    }
+  router.director = Director({
+    adapters: options.adapters,
+    views: options.views,
+    staticViews: options.staticViews,
+    middleware: options.middleware,
+    viewConfig: options.viewConfig,
+    staticViewConfig: options.staticViewConfig,
+    libraries: options.libraries,
+    session: options.session
   });
 
   /**
@@ -123,7 +113,6 @@ function Router(options = {}) {
    * @type Object
    */
   router.grapnel = GrapnelFactory(options, router, Router);
-  constructStaticViews.call(router);
   return router;
 }
 
@@ -142,20 +131,6 @@ Router.defaults = {
 };
 
 /**
- * {@link View} factory
- * @type Function
- * @param options {Object} properties for a {@link View}, see the {@link View} documentation.
- */
-Router.View = View;
-
-/**
- * {@link StaticView} factory
- * @type Function
- * @param options {Object} properties for a {@link StaticView}, see the {@link StaticView} documentation.
- */
-Router.StaticView = StaticView;
-
-/**
  * Default properties for route objects, gets merged (deeply) with the routes.
  *
  * @name routeDefaults
@@ -170,17 +145,7 @@ Router.prototype = {
 
   // @todo make private, refactor to success middleware, should never be called by the end-user
   success(route, data = {}) {
-    const view = ensureViewForRoute.call(this, route);
-
-    if (this.currentView && this.currentView !== view) {
-      this.currentView.hide();
-    }
-
-    this.currentRoute = route;
-    this.currentView = view;
-
-    view.render(data);
-    renderStaticViews.call(this, route.staticViews, data)
+    this.director.setComposition(route, data)
       .then(() => {
         // for render server
         if (window._onRouterReady) {
@@ -191,7 +156,6 @@ Router.prototype = {
         // @todo research if this is necessary
         makeAnchorDOMElementsUseRouterNavigate(this);
       });
-
   },
 
   // @todo make private, should never be called by the end-user
@@ -200,12 +164,7 @@ Router.prototype = {
       throw new Error(`Can't sync data, no current route.`);
     }
 
-    if (!this.currentView) {
-      throw new Error(`Can't sync data, no current route.`);
-    }
-
-    this.currentView.sync(data);
-    renderStaticViews.call(this, this.currentRoute.staticViews, data);
+    this.director.sync(data);
   },
 
   // @todo make private, should never be called by the end-user
@@ -357,7 +316,7 @@ Router.prototype = {
    *   );
    */
   security(middleware = [], data = {}) {
-    return this.middleware.security.run(middleware, data);
+    return this.director.middleware.security.run(middleware, data);
   },
 
   /**
@@ -376,59 +335,12 @@ Router.prototype = {
    *   .then(...);
    */
   data(middleware = [], data = {}) {
-    return this.middleware.data.run(middleware, data)
+    return this.director.middleware.data.run(middleware, data)
       .then(data => {
         return _.omit(data, ['sync', 'destruct']);
       });
   }
 
 };
-
-function ensureViewForRoute(route) {
-  const viewName = route.view;
-
-  if (!this.views[viewName]) {
-    const viewOptions = this.options.views[viewName];
-
-    // for render server, if this is true, the rendered element is already on the page
-    if (window._preRendered) {
-      viewOptions.el = viewOptions.$holder
-        ? $(`> ${viewOptions.tag}`, viewOptions.$holder)[0]
-        : $(`${viewOptions.holder} > ${viewOptions.tag}`)[0];
-    }
-
-    _.defaults(viewOptions, this.options.viewConfig, {
-      name: viewName
-    });
-
-    this.views[viewOptions.name] = View(viewOptions);
-  }
-
-  return this.views[viewName];
-}
-
-function constructStaticViews() {
-  _.each(this.options.staticViews, (staticView, staticViewName) => {
-    staticView.router = this;
-    staticView.name = staticView.name || staticViewName;
-    this.staticViews[staticViewName] = StaticView(staticView);
-  });
-}
-
-function renderStaticViews(staticViews, data = {}) {
-  const promises = [];
-
-  _.each(this.staticViews, (staticView, name) => {
-    if (staticViews && staticViews.indexOf(name) !== -1) {
-      promises.push(
-        staticView.view.render(data)
-      );
-    } else {
-      staticView.view.hide();
-    }
-  });
-
-  return Promise.all(promises);
-}
 
 export default Router;
