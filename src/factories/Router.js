@@ -144,8 +144,8 @@ Router.routeDefaults = {};
 Router.prototype = {
 
   // @todo make private, refactor to success middleware, should never be called by the end-user
-  success(route, data = {}) {
-    this.director.setComposition(route, data)
+  success(route, params = {}, res = {}) {
+    this.director.setComposition(route, params, res)
       .then(() => {
         // for render server
         if (window._onRouterReady) {

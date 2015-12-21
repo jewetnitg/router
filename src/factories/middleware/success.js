@@ -3,7 +3,7 @@
  */
 function successMiddlewareFactory(route) {
   return function successMiddleware(req, res, next) {
-    route.router.success(route, res.data);
+    route.router.success(route, req.params, res.data);
   }
 }
 
