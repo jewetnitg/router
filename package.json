@@ -28,7 +28,7 @@
   "dependencies": {
     "babel-polyfill": "^6.3.14",
     "frontend-policies": "^0.0.2",
-    "frontend-view": "^0.0.3",
+    "frontend-view-director": "^0.0.1",
     "frontend-middleware": "^0.0.1",
     "grapnel": "^0.6.2",
     "jquery": "2.1.4",

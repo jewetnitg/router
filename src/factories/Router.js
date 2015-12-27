@@ -9,13 +9,14 @@ import replaceNavigate from '../helpers/replaceNavigate';
 import makeAnchorDOMElementsUseRouterNavigate from '../helpers/makeAnchorDOMElementsUseRouterNavigate';
 
 import RouterValidator from '../validators/Router';
-import Director from 'frontend-view';
+import ViewDirector from 'frontend-view-director';
 import GrapnelFactory from './Grapnel';
 
 /**
  * The Router factory / class, responsible for creating a Router.
  *
  * @class Router
+ * @todo refactor to use FactoryFactory
  *
  * @param options {Object}
  *
@@ -93,13 +94,15 @@ function Router(options = {}) {
 
   const router = Object.create(Router.prototype, props);
 
-  router.director = Director({
+  router.director = ViewDirector({
     adapters: options.adapters,
     views: options.views,
     staticViews: options.staticViews,
     middleware: options.middleware,
-    viewConfig: options.viewConfig,
-    staticViewConfig: options.staticViewConfig,
+    config: {
+      views: options.viewConfig,
+      staticViews: options.staticViewConfig
+    },
     libraries: options.libraries,
     session: options.session
   });
@@ -153,15 +156,16 @@ Router.prototype = {
           delete window._onRouterReady;
         }
 
-        // @todo research if this is necessary
         makeAnchorDOMElementsUseRouterNavigate(this);
+      }, (err) => {
+        this.fail(route, err);
       });
   },
 
   // @todo make private, should never be called by the end-user
   sync(data = {}) {
-    if (!this.currentRoute) {
-      throw new Error(`Can't sync data, no current route.`);
+    if (!this.director.state.composition) {
+      throw new Error(`Can't sync data, no composition.`);
     }
 
     this.director.sync(data);
@@ -169,8 +173,8 @@ Router.prototype = {
 
   // @todo make private, should never be called by the end-user
   fail(route, data) {
-    switch (data.reason) {
-      case 'security':
+    switch (data.code) {
+      case 403:
         const unauthorized = route.unauthorized || this.options.unauthorizedRoute;
 
         if (typeof unauthorized === 'string') {
@@ -179,10 +183,18 @@ Router.prototype = {
           unauthorized(route, data);
         }
         break;
-      case 'data':
-        const error = route.error || this.options.errorRoute;
+      case 500:
+        let error = route.error || this.options.errorRoute;
 
         if (typeof error === 'string') {
+          if (data) {
+            if (data.error && typeof data.error === 'string') {
+              error += '?error=' + data.error;
+            } else if (data.error instanceof Error) {
+              error += '?error=' + data.error.message;
+            }
+          }
+
           this.redirect(error);
         } else if (typeof error === 'function') {
           error(route, data);
@@ -316,7 +328,7 @@ Router.prototype = {
    *   );
    */
   security(middleware = [], data = {}) {
-    return this.director.middleware.security.run(middleware, data);
+    return this.director.middleware.security.execute(middleware, data);
   },
 
   /**
@@ -327,15 +339,16 @@ Router.prototype = {
    * @instance
    *
    * @param middleware {String|Array<String>} Middleware(s) to execute
-   * @param {Object} [data={}] - Data to pass to the middleware as parameters
+   * @param {Object} [params={}] - Data to pass to the middleware as parameters
+   * @param {Object} [data={}] - Data to pass to the middleware as response data
    *
    * @returns {Promise} Promise that resolves if the middleware executed successfully, and rejects if it doesn't
    * @example
    * router.data('user.ensure')
    *   .then(...);
    */
-  data(middleware = [], data = {}) {
-    return this.director.middleware.data.run(middleware, data)
+  data(middleware = [], params = {}, data = {}) {
+    return this.director.middleware.data.execute(middleware, params, data, this.sync.bind(this))
       .then(data => {
         return _.omit(data, ['sync', 'destruct']);
       });
