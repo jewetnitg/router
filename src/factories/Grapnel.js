@@ -5,7 +5,8 @@ import Grapnel from 'grapnel';
 import _ from 'lodash';
 
 import successMiddlewareFactory from './middleware/success';
-import getQueryString from '../helpers/getQueryString';
+import queryStringMiddlewareFactory from './middleware/querystring';
+import redirectMiddlewareFactory from './middleware/redirect';
 
 function GrapnelFactory(options = {}, router = {}, Router = {}) {
   const grapnelOptions = _.pick(options, [
@@ -33,7 +34,7 @@ function addRoutesToGrapnelRouter(options, router, Router) {
     });
 
     const middleware = [
-      queryStringMiddlewareFactory(route),
+      queryStringMiddlewareFactory(),
       successMiddlewareFactory(route)
     ];
 
@@ -74,22 +75,6 @@ function addNotFoundRouteToGrapnelRouter(options, router) {
 
     router.grapnel.get('/*', notFoundMiddleware);
     router.grapnel.get('*', notFoundMiddleware);
-  }
-}
-
-function redirectMiddlewareFactory(router, route) {
-  return function redirectMiddleware(req, event) {
-    if (!event.parent()) {
-      router.redirect(route);
-    }
-  }
-}
-
-function queryStringMiddlewareFactory() {
-  return function queryStringMiddleware(req, event, next) {
-    const queryString = getQueryString();
-    _.defaults(req.params, queryString);
-    next();
   }
 }
 
