@@ -3,15 +3,20 @@ import makeAnchorDOMElementsUseRouterNavigate from '../../helpers/makeAnchorDOME
 function successMiddlewareFactory(route) {
   return function successMiddleware(req, res, next) {
     route.router.director.setComposition(route, req.params, res.data)
-      .then(() => {
+      .then((data) => {
         makeAnchorDOMElementsUseRouterNavigate(route.router);
+        route.router.trigger('route', {
+          route,
+          data,
+          params: req.params
+        });
       }, (err) => {
         handleFailedViewDirectorMiddleware(route, err);
       });
   }
 }
 
-// @todo refactor both cases to use more abstract functions
+// @todo refactor both cases to use one, more abstract function
 function handleFailedViewDirectorMiddleware(route, data) {
   switch (data.code) {
     // @todo add query string with message like done for 500
@@ -23,6 +28,11 @@ function handleFailedViewDirectorMiddleware(route, data) {
       } else if (typeof unauthorized === 'function') {
         unauthorized(route, data);
       }
+
+      route.router.trigger('unauthorized', {
+        route,
+        data
+      });
       break;
     case 500:
       let error = route.error || route.router.options.errorRoute;
@@ -42,6 +52,11 @@ function handleFailedViewDirectorMiddleware(route, data) {
       }
 
       console.warn('error in data middleware', route, data);
+
+      route.router.trigger('error', {
+        route,
+        error: data.error || data
+      });
 
       break;
   }

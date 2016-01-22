@@ -24,10 +24,11 @@ import GrapnelFactory from './Grapnel';
  * @property unauthorized {String} Reference to a route, route that should be shown when security for a route failed
  *
  * @property pushState {Boolean} Grapnel pushState option
+ * @property hashBang {Boolean} Grapnel hashBang option
+ * @todo document types correctly
  * @property root {Boolean} Grapnel root option
  * @property env {Boolean} Grapnel env option
  * @property mode {Boolean} Grapnel mode option
- * @property hashBang {Boolean} Grapnel hashBang option
  *
  * @example
  * const router = Router({
@@ -73,6 +74,8 @@ const Router = FactoryFactory({
     middleware: 'object'
   },
 
+  events: true,
+
   props(options = {}) {
     return {
       session: {
@@ -106,7 +109,8 @@ const Router = FactoryFactory({
     /**
      * @todo document
      */
-    start() {
+    start(options = {}) {
+      Object.assign(this.options, options);
       this.grapnel = GrapnelFactory(this.options, this, Router);
     },
 
